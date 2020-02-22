@@ -1,0 +1,329 @@
+---
+title: "Final Project Report Tips and Outline"
+author: "Rebecca LI (1456424)"
+date: "December, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+```
+## Data Preparation 
+
+```{r}
+# Feel free to insert R code chunks where needed
+house_csv <- read.csv( "house.csv")
+View(house_csv)
+str(house_csv)
+```
+
+```{r}
+##Randomly select subsets for training and testing
+# Randomly select a subset of the 150 houses. This random sample should contain 130 houses.
+set.seed(1)
+training.houses <- sample_n(house_csv,130)
+# Create another data frame of the rest of the houses (n = 20)
+testing.houses <- subset(house_csv, !(PID %in% training.houses$PID))
+
+write.csv(training.houses, file = "trainingset.csv")
+write.csv(testing.houses, file = "testingset.csv")
+
+```
+<font color="#157515"><b>
+**Make sure the training and testing sets are exclusive to each other !**
+</font></b>
+
+## Main Task Overview and Data Preparation
+
+### Problem 1
+1. Is there a significant difference in sales prices between brick and non-brick houses?
+```{r}
+# inspect what the factor levels of this variable are.
+class(training.houses$brick) 
+# Compute descriptive statistics
+( bricks <- group_by(training.houses, brick))
+
+```
+Also use a side-by-side boxplot to present the prices of the two types of houses.
+```{r, fig.height= 3, fig.width= 5}
+kable((scores_table <- summarize(bricks,
+                       group.size   = length(price),   
+                       mean.bricks = round( mean(price), digits = 2),
+                       sd.bricks   = round( sd(price), digits = 2)
+                            )))
+# draw boxplot using geom_boxplot()
+(bp <- ggplot(bricks, aes(x = brick, y = price))+geom_boxplot())
+
+```
+
+##### Test the equal variance assumption
+```{r}
+( result_vartest <- var.test(price ~ brick, data = training.houses)  ) 
+result_vartest$p.value # What is the p-value for the variance test?
+```
+
+
+<font color="#157515"><b>
+
+Interpret the results and/or provide disucssions:
+
+We obtained **p-value** (i.e., p = `r result_vartest$p.value`)  greater than 0.05; this result supports the equal-variance assumption. So we can assume that the two variances are equal/homogeneous. 
+
+On the other hand, we can tell from the ***table** and **boxplot** that the brick and non-brick houses shares similar mean and std
+
+</font></b>
+
+##### Perform t-test.
+
+use the `t.test()` function. Also consider,need to include the `var.equal = TRUE` arugment based on the result of part (e). 
+ 
+```{r}
+# Edit me
+(result_t_test <- t.test(price ~ brick, data = training.houses, var.equal=TRUE) )
+result_t_test$p.value
+result_t_test$estimate
+```
+
+
+<font color="#157515"><b>
+
+Our study found that on average t tatus  is `r format( result_t_test$estimate[1],digit =7 )` for houses without bricks, and `r format(  result_t_test$estimate[2], digit =7)`  for houses with bricks, thus non-brick houses have higher prices than brick houses
+
+t-statistic = `r round(result_t_test$statistic,2)`,
+p = `r format(result_t_test$p.value, 3)`,
+The 95 % confidence interval (CI) is (`r format(result_t_test$conf.int,1)`) 
+
+</font></b>
+
+### Problem 2
+2. Calculate the age of the houses in 2018. In addition, present a histogram of the house age variable
+
+```{r}
+( ages <- 2018 - training.houses$year.built)
+ggplot(training.houses, aes(x = ages)) +
+  geom_histogram(binwidth = 2)
+
+```
+
+
+## Regression Modeling and Interpretations 
+use multiple regression to explain house sales price
+
+### Problem 3
+Fit a regression model to explain house sales price
+
+```{r}
+##Randomly select subsets for training and testing
+( house_lm <- lm(price ~ home.size + lot.size + rooms+ bathrooms+ utilities+ year.built + overall.condition + brick , data = training.houses) ) 
+
+```
+
+### Problem 4
+Interpret the regression results. You should follow the 5 steps covered in class to analyze the
+results. The 5th step - prediction - is conducted in the next question
+
+#### (Step 1) Interpret the overall model 
+
+Interpret the results of the F-test and its associated p-value for the overall significance of the regression model. Explain the results. 
+
+```{r}
+# Edit me
+(lm.results<- summary(house_lm))
+```
+<font color="#157515"><b>
+It can be seen that p-value of the F-statistic is 2.2e-16 (< 0.05), which is highly significant. We say the regression model overall is significant. This means that, at least, one of the explanatory variables is significantly related to the response variable.
+</font></b>
+
+
+#### (Step 2) Interpret the beta coefficients
+
+Test each of the individual regression coefficients (beta 1 and beta 2). To do this, first extract the coefficients table from the test ouput. Then, answer the questions afterward. 
+
+1) Extract the coefficients table from the test ouput
+
+```{r}
+# Edit me
+( lm.coef <- lm.results$coefficients )  # extract the coefficients table
+
+# Display the coefficients table in a nice `kable` table. Meanwhile, round all the numbers to three decimal places in the table. 
+(lm.coef.table <-kable(lm.coef, digits = c(3, 3, 3, 3)))   # display the featuers
+```
+
+2)  Extract the significant variables:
+```{r}
+# find out those variables P values lower than 0.05
+( sig_variables <- which ( lm.coef[,4] <0.05) )   
+lm.coef[sig_variables,4]   # display the p values of  the significant variables
+```
+
+i. Estimated coefficents of the regression model 
+
+<font color="#157515">
+As can be seen the lm.coef.table, we have the estimate value and p-values of the F-statistic for all variables.
+
+   First, let's check out the **p-values**. The significant variables are:  `r names(training.houses)[sig_variables]`  because their p values are less than 0.05 ( `r format( lm.coef[sig_variables,4], digits =2 )` ,respectively ).
+   This tells us that only for those variables, the estimated beta coefficients are statistically significantly different from 0. Thus, only the variables ** `r names(house_csv)[sig_variables]` ** are significant predictors of the response variable price.
+
+Second, let's interpret the **beta coefficients** of the significant predictors. See the coefficients of `r names(training.houses)[sig_variables]`  in the model. They are all positive, and are `r format( lm.coef[sig_variables,1], digit=4)` respectively.
+
+Here is how we interpret their coefficients:
+</font>
+
+    1) Assuming that we hold all else constant, as the home.size is increased by one square feet, the price increases by `r round( lm.coef[2,1], digit=2)`
+    2) Assuming that we hold all else constant, as the lot.size is increased by one acre, the price increases by `r  round( lm.coef[3,1], digit=2)`
+    3) Assuming that we hold all else constant, as the bathrooms is increased by one room, the price increases by `r  format( lm.coef[5,1], digit=3)`
+    4) Assuming that we hold all else constant, as the overall.condition is increased by one score, the price increases by `r round( lm.coef[8,1], digit=9)`
+    
+ii. Explanatory variables should be removed from the model
+
+Extract the insignificant variables:
+```{r}
+( insig_variables <-which ( lm.coef[,4] >0.05) [-1] )    
+lm.coef[insig_variables,4]   # display the p values of  the insignificant variables
+
+```
+<font color="#157515">
+The p values of the variables of **`r names(training.houses)[insig_variables]`** are  `r format( lm.coef[insig_variables,4], digits =2 )` ,respectively. Since they are larger than 0.05, they are **insignificant coefficients, need to be removed**.
+</font>
+
+The **new linear regression** should be 
+```{r}
+( house_lm.new <- lm(price ~ home.size + lot.size + bathrooms + overall.condition , data = training.houses) ) 
+(lm.results.new<- summary(house_lm.new))
+(lm.coef.new <- lm.results.new$coefficients )  # extract the coefficients table
+
+```
+
+
+##### (Step 3) Report the regression equation
+
+<font color="#157515"><b>
+Determine the regression equation with the explanatory variable(s) identified in the previous step. 
+
+$$Estimated Price = `r round( lm.coef.new[1,1],digit =2)` + 
+                    `r round( lm.coef.new[2,1],digit =2)` * home.size + 
+                    `r round( lm.coef.new[3,1],digit =2)` * lot.size  +  
+                    `r round( lm.coef.new[4,1],digit =2)` * bathrooms + 
+                    `r round( lm.coef.new[5,1],digit =2)` * overall.condition   $$                   
+</font></b>
+
+##### (Step 4) Assess the model 
+
+The value of R2 will always be positive and will range from zero to one. The R2 value close to 1 indicates that the model explains a large portion of the variance in the response variable.
+
+To report the results of multiple regression, a more common practice is to report the "adjusted R2", which is essentially the same as R2 but it also takes into account the number of predictors in the model.
+
+```{r}
+# Edit me
+(lm.results.new$r.squared)
+(lm.results.new$adj.r.squared)
+
+```
+
+<font color="#157515"><b>
+The interpretation of R-square and adjusted R-square value:
+</font></b>    
+    
+    The R2 value is `r (lm.results.new$r.squared)` in our regression model. This means that our model can explain `r round((lm.results.new$r.squared) *100,digits=2)`% of the variation of worker-hours. 
+    
+    With four predictor variables, the adjusted R2 = `r (lm.results.new$adj.r.squared)`, meaning that `r round((lm.results.new$adj.r.squared) *100,digits=2)`% of the variance of overhead can be predicted by`r names(training.houses)[sig_variables]`".
+
+
+## Prediction and Validation  
+
+### Problem 5
+5. Based on your regression model, predict which 10 properties in the testing set ranked highest in
+sales price. Clearly state your answer in the report.
+
+To get the prediction for the prices of testing samples:
+```{r}
+( predictions <-predict( house_lm.new, data.frame(testing.houses)) )
+```
+
+To get a 95% confidence interval for the prices:
+```{r}
+( predictions_CI <-predict( house_lm.new, data.frame(testing.houses) , interval = "confidence") )
+
+```
+
+Sort the predicted prices values 
+```{r}
+(properties_top10<-sort(predictions,decreasing = TRUE)[1:10] )
+names(properties_top10)
+```
+<font color="#157515"><b>
+    The 10 properties in the testing set ranked highest in sales price are (from highest prices to 10 highest price):
+    
+    `r names(properties_top10)`
+
+</font></b>
+
+
+### Problem 6
+6. Validate your prediction using the real price values in the testing set. Is your prediction correct
+(and/or to what extent)? Provide a discussion/conclusion of your analysis.
+
+<font color="#157515">
+Ground Truth value:
+
+
+```{r}
+(ground_truth <- testing.houses$price)
+```
+
+
+Validation:
+
+To evaluate the predicted and the ground truth values(i.e., observed), we used root of **mean square error and R square. **
+```{r}
+# Root of Mean square error
+RMSE  <- function(actual, preds)   
+{
+  sqrt(mean((preds -actual)^2))
+}
+
+# R square
+R_square <- function(actual, preds)   
+{
+  rss <- sum((preds - actual) ^ 2)          ## residual sum of squares
+  tss <- sum((actual - mean(actual)) ^ 2)   ## total sum of squares
+  rsq <- 1 - rss/tss
+}
+
+(rmse_house <- RMSE(ground_truth,predictions))
+(rsq_house <- R_square(ground_truth,predictions))
+
+```
+
+
+
+    RMSER = `r format( rmse_house,digit = 9)`, and R square = `r rsq_house`.
+    
+This implies that `r round(rsq_house*100,digits=2)`%  of the variability of the dependent variable has been accounted for.
+
+</font>
+
+
+<font color="#157515"><b>
+
+```{r}
+
+fit.data <-data.frame( id = c( 1:20), price = predictions_CI[,1])
+lwr.data <-data.frame( id = c( 1:20), price = predictions_CI[,2])
+upr.data <-data.frame( id = c( 1:20), price = predictions_CI[,3])
+gt.data <-data.frame( id = c( 1:20), price = ground_truth)
+
+ggplot(lwr.data, aes(x = id, y = price))+  geom_line(linetype = "dashed") + 
+  geom_line(data = upr.data,linetype = "dashed") +
+  geom_point(data = fit.data)+
+  geom_point(data = gt.data, colour = "red")  
+```
+
+This plot shows the comparing of the ground truth values(red points), the predicted values(black points) and the confidential interval (area between top and bottom dashed lines).
+
+We can see most of the ground truth value are located in CI. So we had a fair-good prediction.
+</font></b>
+
+
